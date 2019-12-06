@@ -1,0 +1,74 @@
+preferences {
+	section("Motion Sensor a Evaluar:") {
+        input "themotion", "capability.motionSensor", required: true, title: "Donde?"  
+    }
+    
+    section("A/A a Controlar:") {
+		input "Aire", "capability.switch", required: true, title: "Donde?"
+    }
+    
+    section("Apagar cuando no haya movimeinto despues de") {
+        input "Minutos", "number", required: true, title: "Minutos?"
+    }
+    
+
+}
+
+
+def installed() {
+    initialize()
+}
+
+def updated() {
+    unsubscribe()
+    initialize()
+}
+
+def initialize() {
+    subscribe(themotion, "motion.active", motionDetectedHandler)
+    subscribe(themotion, "motion.inactive", motionStoppedHandler)
+}
+
+
+
+def motionDetectedHandler(evt) {
+    def now = new Date()
+    def AHORA= now.format("dd/MM/YYYY HH:mm:ss.SSS",TimeZone.getTimeZone('GMT-4')) 
+    def AA = Aire.currentState("switch")
+    log.debug "Inicio Movimiento $AHORA  [A/A $AA.value]"
+    // Enciendo el Aire solo si el mismo esta apagado. Para que no intente prender si ya está prendido.
+    if (AA.value == "off") {
+        Aire.on()
+    }
+    
+}
+    
+def motionStoppedHandler(evt) {
+    def now = new Date()
+    def AHORA= now.format("dd/MM/YYYY HH:mm:ss.SSS",TimeZone.getTimeZone('GMT-4')) 
+    log.debug "Movimiento detenido en:  $AHORA"
+    def motionState = themotion.currentState("motion")
+    runIn(60 * Minutos, checkMotion)
+}    
+    
+def checkMotion() {
+    def motionState = themotion.currentState("motion")
+    if (motionState.value == "inactive") {
+        // Verifico cuanto ha pasado de inactividad
+        log.debug "Estado SIN MOVIMIENTO"
+        def elapsed = now() - motionState.date.time
+        // Llevo a milisegundos
+        def threshold = 1000 * 60 * Minutos
+        if (elapsed >= threshold) {
+            def now = new Date()
+            def AHORA= now.format("dd/MM/YYYY HH:mm:ss.SSS",TimeZone.getTimeZone('GMT-4')) 
+            log.debug "APAGADO EN:  $AHORA"
+            Aire.off()
+        } else {
+            log.debug "Aun no hay suficiente tiempo de inactividad"
+        }
+    } else {
+        // Hay Movimiento
+        log.debug "En checkMotion Espero por inactividad"
+    }
+}
